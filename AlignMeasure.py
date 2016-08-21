@@ -3,10 +3,12 @@
 import argparse
 import math
 
+from textgrid import TextGrid
 
-#based on the paper: An Improved Speech Segmentation Quality Measure: the R-value
+
+# based on the paper: An Improved Speech Segmentation Quality Measure: the R-value
 #   by Okko Johannes Räsänen, Unto Kalervo Laine, and Toomas Altosaar
-#link: http://legacy.spa.aalto.fi/research/stt/papers/r_value.pdf
+# link: http://legacy.spa.aalto.fi/research/stt/papers/r_value.pdf
 
 class Segment:
     def __init__(self, text, start, dur):
@@ -24,6 +26,22 @@ def read_ctm(file):
         for line in f:
             tok = line.strip().split(' ')
             ret.append(Segment(tok[4], float(tok[2]), float(tok[3])))
+    return ret
+
+
+def read_textgrid(file, tier):
+    tg = TextGrid()
+    tg.read(file)
+
+    if len(tg.tiers) <= tier:
+        raise IOError('Texgrid file ' + file + ' doesn\'t have enough tiers to get tier: ' + str(tier))
+
+    if not hasattr(tg.tiers[tier], 'intervals'):
+        raise IOError('The selected tier: ' + str(tier) + ' is not and IntervalTier in file: ' + file)
+
+    ret = []
+    for seg in tg.tiers[tier].intervals:
+        ret.append(Segment(seg.mark, seg.minTime, seg.duration()))
     return ret
 
 
@@ -62,7 +80,7 @@ def count_hits(ref_bound, hyp_bound, search_reg=0.02):
     # the manual transcription are within 20 ms of each other"
     for b in ref_bound:
         for b2 in hyp_bound:
-            if b2.time >= b.reg_beg and b2.time <= b.reg_end and b.name == b2.name:
+            if b.reg_beg <= b2.time <= b.reg_end and b.name == b2.name:
                 hit += 1
 
     return hit
@@ -73,16 +91,16 @@ def seg2boundary(segments):
     for i in range(len(segments) + 1):
         name_p = '#'
         name_n = '#'
-        if (i > 0):
+        if i > 0:
             name_p = segments[i - 1].text
             time = segments[i - 1].start + segments[i - 1].dur
         else:
             time = segments[i].start
 
-        if (i < len(segments)):
+        if i < len(segments):
             name_n = segments[i].text
             if i > 0:
-                assert time == segments[i].start
+                assert abs(time - segments[i].start) <= 0.01, '{} - {}'.format(time, segments[i].start)
 
         ret.append(Boundary(time, name_p + "_" + name_n))
     return ret
@@ -95,13 +113,28 @@ def debug(lst):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Calcualte various alignemnt accuracy measures.')
-    parser.add_argument('ref', help='reference segmentation')
-    parser.add_argument('hyp', help='studied segmentation')
+    parser.add_argument('ref', help='reference segmentation (CTM or TextGrid)')
+    parser.add_argument('hyp', help='studied segmentation (CTM or TextGrid)')
+    parser.add_argument('--ref-tier', '-rt', dest='reftier', type=int, default=0,
+                        help='for TextGrid, use which tier for reference (default:0)')
+    parser.add_argument('--hyp-tier', '-ht', dest='hyptier', type=int, default=0,
+                        help='for TextGrid, use which tier for hypothesis (default:0)')
 
     args = parser.parse_args()
 
-    ref_seg = read_ctm(args.ref)
-    hyp_seg = read_ctm(args.hyp)
+    if args.ref.endswith('.ctm'):
+        ref_seg = read_ctm(args.ref)
+    elif args.ref.endswith('.TextGrid'):
+        ref_seg = read_textgrid(args.ref, args.reftier)
+    else:
+        raise IOError('Unknown extension for ref file: ' + args.ref)
+
+    if args.ref.endswith('.ctm'):
+        hyp_seg = read_ctm(args.hyp)
+    elif args.ref.endswith('.TextGrid'):
+        hyp_seg = read_textgrid(args.hyp, args.hyptier)
+    else:
+        raise IOError('Unknown extension for hyp file: ' + args.hyp)
 
     # debug(ref_seg)
     # debug(hyp_seg)
@@ -125,8 +158,8 @@ if __name__ == '__main__':
     r2 = (-os + hr - 100.0) / math.sqrt(2.0)
     R = 1 - ((math.fabs(r1) + math.fabs(r2)) / 200.0)
 
-    print 'Number of boundaries in studied segmentation: {}'.format(hyp_count)
     print 'Number of boundaries in reference segmentation: {}'.format(ref_count)
+    print 'Number of boundaries in studied segmentation: {}'.format(hyp_count)
     print 'Number of hits: {}'.format(hit_count)
     print 'Hit rate (higher=>better_: {:%}'.format(hr / 100.0)
     print 'Over-segmentation rate (closer-zero=>better): {}'.format(os)
