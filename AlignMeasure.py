@@ -21,11 +21,17 @@ class Segment:
 
 
 def read_ctm(file):
-    ret = []
+    ret = {}
     with open(file, 'r') as f:
         for line in f:
             tok = line.strip().split(' ')
-            ret.append(Segment(tok[4], float(tok[2]), float(tok[3])))
+            file = tok[0] + '_' + tok[1]
+            if file not in ret:
+                ret[file] = []
+            start = float(tok[2])
+            len = float(tok[3])
+            text = tok[4]
+            ret[file].append(Segment(text, start, len))
     return ret
 
 
@@ -42,7 +48,7 @@ def read_textgrid(file, tier):
     ret = []
     for seg in tg.tiers[tier].intervals:
         ret.append(Segment(seg.mark, seg.minTime, seg.duration()))
-    return ret
+    return {'textgid': ret}
 
 
 class Boundary:
@@ -108,7 +114,7 @@ def seg2boundary(segments):
 
 def debug(lst):
     for el in lst:
-        print el
+        print(el)
 
 
 if __name__ == '__main__':
@@ -123,31 +129,39 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     if args.ref.endswith('.ctm'):
-        ref_seg = read_ctm(args.ref)
+        refs = read_ctm(args.ref)
     elif args.ref.endswith('.TextGrid'):
-        ref_seg = read_textgrid(args.ref, args.reftier)
+        refs = read_textgrid(args.ref, args.reftier)
     else:
         raise IOError('Unknown extension for ref file: ' + args.ref)
 
     if args.ref.endswith('.ctm'):
-        hyp_seg = read_ctm(args.hyp)
+        hyps = read_ctm(args.hyp)
     elif args.ref.endswith('.TextGrid'):
-        hyp_seg = read_textgrid(args.hyp, args.hyptier)
+        hyps = read_textgrid(args.hyp, args.hyptier)
     else:
         raise IOError('Unknown extension for hyp file: ' + args.hyp)
 
-    # debug(ref_seg)
-    # debug(hyp_seg)
+    hit_count = 0
+    hyp_count = 0
+    ref_count = 0
+    for file, hyp_seg in hyps.items():
+        assert file in refs, 'Missing hyp file in ref: ' + file
 
-    ref_bound = seg2boundary(ref_seg)
-    hyp_bound = seg2boundary(hyp_seg)
+        ref_seg = refs[file]
 
-    # debug(ref_bound)
-    # debug(hyp_bound)
+        # debug(ref_seg)
+        # debug(hyp_seg)
 
-    hit_count = count_hits(ref_bound, hyp_bound)
-    hyp_count = len(hyp_bound)
-    ref_count = len(ref_bound)
+        ref_bound = seg2boundary(ref_seg)
+        hyp_bound = seg2boundary(hyp_seg)
+
+        # debug(ref_bound)
+        # debug(hyp_bound)
+
+        hit_count += count_hits(ref_bound, hyp_bound)
+        hyp_count += len(hyp_bound)
+        ref_count += len(ref_bound)
 
     hr = (hit_count / float(ref_count)) * 100.0
     os = ((hyp_count / float(ref_count)) - 1) * 100.0
@@ -158,14 +172,14 @@ if __name__ == '__main__':
     r2 = (-os + hr - 100.0) / math.sqrt(2.0)
     R = 1 - ((math.fabs(r1) + math.fabs(r2)) / 200.0)
 
-    print 'Number of boundaries in reference segmentation: {}'.format(ref_count)
-    print 'Number of boundaries in studied segmentation: {}'.format(hyp_count)
-    print 'Number of hits: {}'.format(hit_count)
-    print 'Hit rate (higher=>better_: {:%}'.format(hr / 100.0)
-    print 'Over-segmentation rate (closer-zero=>better): {}'.format(os)
-    print 'Precision (higher=>better): {:%}'.format(prc)
-    print 'Recall (higher=>better): {:%}'.format(rcl)
-    print 'F-measure (higher=>better): {:%}'.format(f_meas)
-    print 'r1 (closer-zero=>better): {}'.format(r1)
-    print 'r2 (closer-zero=>better): {}'.format(r2)
-    print 'R-value (higher=>better): {:%}'.format(R)
+    print('Number of boundaries in reference segmentation: {}'.format(ref_count))
+    print('Number of boundaries in studied segmentation: {}'.format(hyp_count))
+    print('Number of hits: {}'.format(hit_count))
+    print('Hit rate (higher=>better_: {:%}'.format(hr / 100.0))
+    print('Over-segmentation rate (closer-zero=>better): {}'.format(os))
+    print('Precision (higher=>better): {:%}'.format(prc))
+    print('Recall (higher=>better): {:%}'.format(rcl))
+    print('F-measure (higher=>better): {:%}'.format(f_meas))
+    print('r1 (closer-zero=>better): {}'.format(r1))
+    print('r2 (closer-zero=>better): {}'.format(r2))
+    print('R-value (higher=>better): {:%}'.format(R))
